@@ -116,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return AlertDialog(
           title: Text("Confirmar Exclusão"),
           content: Text(
-            "Deseja realmente excluir o tanque \"${tanque.nome}\"?\n\nTodas as leituras de histórico associadas a ele serão perdidas permanentemente.",
+            "Deseja realmente excluir o viveiro \"${tanque.nome}\"?\n\nTodas as leituras de histórico associadas a ele serão perdidas permanentemente.",
           ),
           actions: [
             TextButton(
@@ -230,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: Theme.of(context).primaryColor,
               ),
               iconSize: 32,
-              tooltip: "Adicionar Novo Tanque",
+              tooltip: "Adicionar Viveiro",
               onPressed: _abrirModalAdicionarTanque, // Chama a nova função
             ),
           ],
@@ -274,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Padding(
               padding: EdgeInsets.all(32.0),
               child: Text(
-                "Nenhum tanque cadastrado.",
+                "Nenhum viveiro cadastrado.",
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey),
               ),

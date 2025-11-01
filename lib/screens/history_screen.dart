@@ -103,7 +103,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             child: ValueListenableBuilder(
               valueListenable: HiveService.instance.getLeiturasListenable(),
               builder: (context, Box<Leitura> leiturasBox, _) {
-                // 1. Filtra as leituras APENAS para este tanque
+                // 1. Filtra as leituras APENAS para este viveiro
                 final tankReadings = leiturasBox.values
                     .where(
                       (leitura) =>
@@ -145,8 +145,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   return Center(
                     child: Text(
                       _startDate == null
-                          ? "Nenhum registro encontrado para este tanque."
-                          : "Nenhum registro encontrado para este período.",
+                          ? "Nenhum registro encontrado para este viveiro."
+                          : "Nenhum registro encontrado neste período.",
                       style: const TextStyle(color: Colors.grey, fontSize: 16),
                       textAlign: TextAlign.center,
                     ),

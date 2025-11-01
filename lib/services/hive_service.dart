@@ -31,17 +31,6 @@ class HiveService {
 
     tanquesBox = await Hive.openBox<Tanque>(tanquesBoxName);
     leiturasBox = await Hive.openBox<Leitura>(leiturasBoxName);
-
-    // Dados mocados
-    if (tanquesBox.isEmpty) {
-      if (kDebugMode) {
-        print("Hive: Populando tanques mocados...");
-      }
-      await tanquesBox.put(
-        'uuid_tanque_1',
-        Tanque(id: 'uuid_tanque_1', nome: 'Tanque 1'),
-      );
-    }
   }
 
   // --- TANQUES ---
@@ -63,7 +52,7 @@ class HiveService {
     );
 
     if (nomeExistente) {
-      throw Exception("Um tanque com este nome já existe.");
+      throw Exception("Um viveiro com este nome já existe.");
     }
 
     final novoId = _uuid.v4();

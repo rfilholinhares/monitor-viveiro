@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_brace_in_string_interps
+
 import 'package:intl/intl.dart';
 import 'package:monitor_viveiro/models/leitura_model.dart';
 import 'package:monitor_viveiro/services/hive_service.dart';
@@ -75,7 +77,6 @@ class ShareService {
     // Agrupa por Dia
     final Map<DateTime, List<Leitura>> leiturasPorDia = {};
     for (final l in leituras) {
-      // A chave é o dia (ignorando a hora)
       final diaKey = DateTime(
         l.dataHora.year,
         l.dataHora.month,
@@ -87,14 +88,13 @@ class ShareService {
       leiturasPorDia[diaKey]!.add(l);
     }
 
-    // Ordena os dias (do mais antigo para o mais recente)
     final diasOrdenados = leiturasPorDia.keys.toList()..sort();
 
     // Loop por dia
     for (final dia in diasOrdenados) {
       buffer.writeln("== Data: ${_dateFormatter.format(dia)} ==\n");
 
-      // Agrupa por Tanque (dentro do dia)
+      // Agrupa por Viveiro (dentro do dia)
       final Map<String, List<Leitura>> leiturasPorTanque = {};
       for (final l in leiturasPorDia[dia]!) {
         if (leiturasPorTanque[l.idTanque] == null) {
@@ -103,7 +103,7 @@ class ShareService {
         leiturasPorTanque[l.idTanque]!.add(l);
       }
 
-      // Ordena os tanques pelo nome (usando o mapa de nomes)
+      // Ordena os viveiros pelo nome
       final tanquesIdsOrdenados = leiturasPorTanque.keys.toList()
         ..sort(
           (a, b) => (mapaNomesTanques[a] ?? 'Z').compareTo(
@@ -111,24 +111,49 @@ class ShareService {
           ),
         );
 
-      // Loop por tanque
+      // Loop por viveiro
       for (final idTanque in tanquesIdsOrdenados) {
         buffer.writeln(
-          "${mapaNomesTanques[idTanque] ?? 'Tanque Desconhecido (ID: $idTanque)'}:",
+          // Usa a nomenclatura "Viveiro"
+          "${mapaNomesTanques[idTanque] ?? 'Viveiro Desconhecido (ID: $idTanque)'}:",
         );
 
-        // Ordena as leituras do tanque pela hora
+        // ---- INÍCIO DA MUDANÇA DE FORMATO (COM |) ----
+
+        // 1. Escreve o Cabeçalho (com padding ajustado)
+        // Col 1 (7) + Col 2 (12) + Col 3
+        buffer.writeln(
+          // "Oxigenio" sem ponto
+          "Hora   | Oxigenio  | Temperatura",
+        );
+
+        // 2. Ordena as leituras do viveiro pela hora
         final leiturasDoTanque = leiturasPorTanque[idTanque]!
           ..sort((a, b) => a.dataHora.compareTo(b.dataHora));
 
-        // Loop por leitura (RF04.5 - Formato exato)
+        // 3. Loop por leitura (formato de tabela)
         for (final l in leiturasDoTanque) {
-          buffer.writeln("  Hora: ${_timeFormatter.format(l.dataHora)}");
-          buffer.writeln("  Oxigênio: ${l.oxigenio.toStringAsFixed(1)} mg/L");
-          buffer.writeln(
-            "  Temperatura: ${l.temperatura.toStringAsFixed(1)} °C\n",
+          // Adiciona padding (espaços) à direita para alinhar as colunas
+
+          // Coluna 1 (Hora): 7 caracteres de largura
+          String hora = "${_timeFormatter.format(l.dataHora)}  ".padRight(7);
+
+          // Coluna 2 (Oxigênio): 12 caracteres de largura
+          // "mg/L" sem espaço
+          String oxigenio = "| ${l.oxigenio.toStringAsFixed(1)}mg/L  ".padRight(
+            12,
           );
+
+          // Coluna 3 (Temperatura):
+          String temp = "| ${l.temperatura.toStringAsFixed(1)}°C";
+
+          buffer.writeln("${hora}${oxigenio}${temp}");
         }
+
+        // 4. Adiciona linha em branco após cada tabela
+        buffer.writeln();
+
+        // ---- FIM DA MUDANÇA DE FORMATO ----
       }
     }
 

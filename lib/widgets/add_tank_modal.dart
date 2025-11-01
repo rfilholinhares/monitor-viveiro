@@ -42,7 +42,7 @@ class _AddTankModalState extends State<AddTankModal> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text("Tanque atualizado com sucesso!"),
+                content: Text("Viveiro atualizado com sucesso!"),
                 backgroundColor: Colors.green,
               ),
             );
@@ -54,7 +54,7 @@ class _AddTankModalState extends State<AddTankModal> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text("Tanque adicionado com sucesso!"),
+                content: Text("Viveiro adicionado com sucesso!"),
                 backgroundColor: Colors.green,
               ),
             );
@@ -88,7 +88,7 @@ class _AddTankModalState extends State<AddTankModal> {
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
       title: const Text(
-        "Adicionar Novo Tanque",
+        "Adicionar Novo Viveiro",
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
@@ -102,8 +102,8 @@ class _AddTankModalState extends State<AddTankModal> {
               controller: _nameController,
               autofocus: true,
               decoration: const InputDecoration(
-                labelText: "Nome do Tanque",
-                hintText: "Ex: Tanque 6",
+                labelText: "Nome do Viveiro",
+                hintText: "Ex: Viveiro 6",
                 prefixIcon: Icon(Icons.label_important_outline_rounded),
               ),
               validator: (value) {

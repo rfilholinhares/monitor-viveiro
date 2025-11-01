@@ -52,7 +52,7 @@ class _NewReadingModalState extends State<NewReadingModal> {
       if (_selectedTank == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Por favor, selecione um tanque."),
+            content: Text("Por favor, selecione um viveiro."),
             backgroundColor: Colors.red,
           ),
         );
@@ -154,7 +154,7 @@ class _NewReadingModalState extends State<NewReadingModal> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Selecione o Tanque",
+          "Selecione o Viveiro",
           style: TextStyle(
             color: Colors.grey.shade800,
             fontWeight: FontWeight.w600,
@@ -165,7 +165,7 @@ class _NewReadingModalState extends State<NewReadingModal> {
           // Usa o tipo Tanque
           value: _selectedTank,
           hint: Text(
-            "Escolha um tanque",
+            "Escolha um viveiro",
             style: TextStyle(color: Colors.grey.shade500),
           ),
           // Itens baseados na lista do Hive
