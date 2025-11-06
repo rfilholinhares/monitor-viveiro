@@ -5,13 +5,13 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:monitor_viveiro/models/leitura_model.dart';
 import 'package:monitor_viveiro/models/tanque_model.dart';
-import 'package:monitor_viveiro/screens/history_screen.dart';
+// import 'package:monitor_viveiro/models/turno_model.dart'; // Não é mais gerido aqui
 import 'package:monitor_viveiro/services/hive_service.dart';
+import 'package:monitor_viveiro/services/share_service.dart'; // 1. IMPORTAR SHARE_SERVICE
 import 'package:monitor_viveiro/widgets/add_tank_modal.dart';
+import 'package:monitor_viveiro/screens/history_screen.dart';
+// import 'package:monitor_viveiro/widgets/share_modal.dart'; // 2. REMOVIDO (Não usamos mais o modal)
 import 'package:monitor_viveiro/widgets/new_reading_modal.dart';
-import 'package:monitor_viveiro/widgets/share_modal.dart';
-
-// Assegure-se que o nome do pacote 'monitor_viveiros' está correto
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,50 +21,73 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Formatador de hora
   final DateFormat _timeFormatter = DateFormat('HH:mm');
+
+  // 3. REMOVIDO: Toda a lógica de turno manual
+  // (_activeTurno, initState, _loadActiveTurno, _toggleTurno)
+
+  // 4. ESTADO DE LOADING PARA PARTILHA
+  bool _isSharing = false;
 
   void _abrirModalAdicionarTanque({Tanque? tanqueParaEditar}) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        // Passa o tanque (se houver) para o modal
         return AddTankModal(tanqueParaEditar: tanqueParaEditar);
       },
     );
   }
 
-  void _abrirModalNovaLeitura() {
+  void _abrirModalNovaLeitura(Tanque viveiro) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return const NewReadingModal();
+        return NewReadingModal(viveiro: viveiro);
       },
     );
   }
 
-  // (RF04) ATUALIZADO: Função para abrir o modal de compartilhamento
-  void _abrirModalCompartilhar() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        // Chama o novo modal que criamos
-        return const ShareModal();
-      },
-    );
+  // 5. ATUALIZADO: Lógica do botão "Compartilhar Turno Vigente"
+  Future<void> _compartilharTurnoVigente() async {
+    setState(() {
+      _isSharing = true;
+    });
+
+    try {
+      // 1. Busca o turno atual (ou cria-o se for o 1º acesso)
+      // (Ex: Se for 15:45, isto retorna o turno que começou às 12:00)
+      final turnoAtual = await HiveService.instance.getOrCreateTurnoAtual();
+
+      // 2. Chama o serviço de partilha
+      await ShareService.instance.gerarECompartilharRelatorio(turnoAtual);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Erro: ${e.toString().replaceAll("Exception: ", "")}",
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSharing = false;
+        });
+      }
+    }
   }
 
-  // (RF03.4) Função para navegar para o histórico
-  void _navegarParaHistorico(Tanque tanque) {
+  void _navegarParaHistorico() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        // Passa o objeto 'tanque' selecionado para a nova tela
-        builder: (context) => HistoryScreen(tanque: tanque),
-      ),
+      MaterialPageRoute(builder: (context) => const HistoryScreen()),
     );
   }
 
+  // (Funções _showTankOptions e _confirmarExclusao permanecem idênticas)
   void _showTankOptions(BuildContext context, Tanque tanque) {
     showDialog(
       context: context,
@@ -75,32 +98,23 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             TextButton(
               child: const Text("Cancelar"),
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(),
             ),
             TextButton(
               child: const Text("Editar"),
               onPressed: () {
-                Navigator.of(dialogContext).pop(); // Fecha este diálogo
-                _abrirModalAdicionarTanque(
-                  tanqueParaEditar: tanque,
-                ); // Abre o modal de edição
+                Navigator.of(dialogContext).pop();
+                _abrirModalAdicionarTanque(tanqueParaEditar: tanque);
               },
             ),
             TextButton(
               style: TextButton.styleFrom(
-                foregroundColor: Theme.of(
-                  context,
-                ).colorScheme.error, // Cor vermelha
+                foregroundColor: Theme.of(context).colorScheme.error,
               ),
               child: const Text("EXCLUIR"),
               onPressed: () {
-                Navigator.of(dialogContext).pop(); // Fecha este diálogo
-                _confirmarExclusao(
-                  context,
-                  tanque,
-                ); // Abre o diálogo de confirmação
+                Navigator.of(dialogContext).pop();
+                _confirmarExclusao(context, tanque);
               },
             ),
           ],
@@ -114,22 +128,18 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: Text("Confirmar Exclusão"),
+          title: const Text("Confirmar Exclusão"),
           content: Text(
             "Deseja realmente excluir o viveiro \"${tanque.nome}\"?\n\nTodas as leituras de histórico associadas a ele serão perdidas permanentemente.",
           ),
           actions: [
             TextButton(
               child: const Text("Cancelar"),
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(
-                  context,
-                ).colorScheme.error, // Vermelho
+                backgroundColor: Theme.of(context).colorScheme.error,
                 foregroundColor: Colors.white,
               ),
               child: const Text("Sim, Excluir"),
@@ -162,14 +172,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 6. REMOVIDO: Lógica de 'isTurnoAtivo'
+
     return Scaffold(
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20.0),
           children: [
             _buildHeader(),
-            const SizedBox(height: 24),
-
+            const SizedBox(height: 20), // Espaço ajustado
+            // 7. REMOVIDO: Botão "Iniciar/Encerrar Turno"
             ValueListenableBuilder(
               valueListenable: HiveService.instance.getLeiturasListenable(),
               builder: (context, Box<Leitura> leiturasBox, _) {
@@ -181,9 +193,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 return Column(
                   children: [
-                    _buildActionButtons(leiturasDeHoje.length),
+                    _buildActionButtons(), // Simplificado
                     const SizedBox(height: 32),
-                    _buildTankList(leiturasDeHoje),
+                    _buildTankList(leiturasDeHoje), // Simplificado
                   ],
                 );
               },
@@ -194,70 +206,66 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ATUALIZADO: _buildHeader agora tem um botão de adicionar
   Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Coluna do Título e Ícone
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.opacity,
-                  color: Theme.of(context).primaryColor,
-                  size: 40,
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  "Monitor de Viveiros",
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
+            Icon(
+              Icons.opacity,
+              color: Theme.of(context).primaryColor,
+              size: 40,
             ),
-            // Botão Adicionar Tanque (RF01.1)
-            IconButton(
-              icon: Icon(
-                Icons.add_box_rounded,
-                color: Theme.of(context).primaryColor,
+            const SizedBox(height: 12),
+            const Text(
+              "Monitor de Viveiros",
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
               ),
-              iconSize: 32,
-              tooltip: "Adicionar Viveiro",
-              onPressed: _abrirModalAdicionarTanque, // Chama a nova função
+            ),
+            const Text(
+              "Controle de oxigênio e temperatura",
+              style: TextStyle(fontSize: 16, color: Colors.black54),
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        const Text(
-          "Controle de oxigênio e temperatura",
-          style: TextStyle(fontSize: 16, color: Colors.black54),
+        IconButton(
+          icon: Icon(
+            Icons.add_circle_outline,
+            color: Theme.of(context).primaryColor,
+          ),
+          iconSize: 30,
+          tooltip: "Adicionar Viveiro",
+          onPressed: () => _abrirModalAdicionarTanque(),
         ),
       ],
     );
   }
 
-  Widget _buildActionButtons(int totalReadingsToday) {
+  Widget _buildActionButtons() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ElevatedButton.icon(
-          icon: const Icon(Icons.add_rounded),
-          label: const Text("Nova Leitura"),
-          onPressed: _abrirModalNovaLeitura,
+          icon: const Icon(Icons.history_rounded),
+          label: const Text("Ver Histórico Geral"),
+          onPressed: _navegarParaHistorico,
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          icon: const Icon(Icons.share_outlined),
-          label: Text("Compartilhar ($totalReadingsToday)"),
-          onPressed: () => _abrirModalCompartilhar(),
+          icon: _isSharing
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.share_outlined),
+          label: const Text("Compartilhar Turno Vigente"),
+          onPressed: _isSharing ? null : _compartilharTurnoVigente,
         ),
       ],
     );
@@ -282,32 +290,46 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: tanques.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 16),
-          itemBuilder: (context, index) {
-            final tanque = tanques[index];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Texto fixo
+            const Text(
+              "Clique no viveiro para registrar:",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: tanques.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 16),
+              itemBuilder: (context, index) {
+                final tanque = tanques[index];
+                final leiturasTanqueHoje = leiturasDeHoje
+                    .where((l) => l.idTanque == tanque.id)
+                    .toList();
 
-            final leiturasTanqueHoje = leiturasDeHoje
-                .where((l) => l.idTanque == tanque.id)
-                .toList();
+                Leitura? ultimaLeitura;
+                if (leiturasTanqueHoje.isNotEmpty) {
+                  leiturasTanqueHoje.sort(
+                    (a, b) => b.dataHora.compareTo(a.dataHora),
+                  );
+                  ultimaLeitura = leiturasTanqueHoje.first;
+                }
 
-            Leitura? ultimaLeitura;
-            if (leiturasTanqueHoje.isNotEmpty) {
-              leiturasTanqueHoje.sort(
-                (a, b) => b.dataHora.compareTo(a.dataHora),
-              );
-              ultimaLeitura = leiturasTanqueHoje.first;
-            }
-
-            return _buildTankCard(
-              tanque: tanque,
-              readingsToday: leiturasTanqueHoje.length,
-              lastReading: ultimaLeitura,
-            );
-          },
+                return _buildTankCard(
+                  tanque: tanque,
+                  readingsToday: leiturasTanqueHoje.length,
+                  lastReading: ultimaLeitura,
+                );
+              },
+            ),
+          ],
         );
       },
     );
@@ -320,7 +342,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     return Card(
       child: InkWell(
-        onTap: () => _navegarParaHistorico(tanque),
+        // Sempre ativo
+        onTap: () => _abrirModalNovaLeitura(tanque),
         onLongPress: () => _showTankOptions(context, tanque),
         borderRadius: BorderRadius.circular(10),
         child: Padding(

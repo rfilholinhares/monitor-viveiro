@@ -1,74 +1,73 @@
-// ignore_for_file: prefer_const_constructors_in_immutables, deprecated_member_use
+// ignore_for_file: unused_field, deprecated_member_use, unnecessary_to_list_in_spreads
 
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:monitor_viveiro/models/leitura_model.dart';
 import 'package:monitor_viveiro/models/tanque_model.dart';
+import 'package:monitor_viveiro/models/turno_model.dart'; // 1. IMPORTAR TURNO
 import 'package:monitor_viveiro/services/hive_service.dart';
+import 'package:monitor_viveiro/services/share_service.dart';
 
 class HistoryScreen extends StatefulWidget {
-  final Tanque tanque;
-
-  HistoryScreen({super.key, required this.tanque});
+  const HistoryScreen({super.key});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  // Formatadores de data e hora
+  // Formatadores
   final DateFormat _dayFormatter = DateFormat(
     'dd \'de\' MMMM \'de\' yyyy',
     'pt_BR',
   );
   final DateFormat _timeFormatter = DateFormat('HH:mm');
-  // Novo formatador para os botões de filtro
   final DateFormat _filterDateFormatter = DateFormat('dd/MM/yy');
+  // 2. NOVO FORMATADOR PARA CABEÇALHO DO TURNO
+  final DateFormat _turnoHeaderFormatter = DateFormat('dd/MM HH:mm');
 
-  // 2. Variáveis de estado para o filtro
+  // Estado do Filtro
   DateTime? _startDate;
   DateTime? _endDate;
+  Tanque? _filtroViveiroSelecionado;
+  List<Tanque> _listaDeViveiros = [];
 
-  // Função para agrupar leituras por dia
-  Map<DateTime, List<Leitura>> _groupReadingsByDay(List<Leitura> readings) {
-    final Map<DateTime, List<Leitura>> grouped = {};
+  // 3. ATUALIZADO: Estado de loading por Turno
+  bool _isSharingTurno = false;
+  Turno? _turnoBeingShared;
 
-    for (final leitura in readings) {
-      // Cria uma chave de data (ignorando a hora)
-      final dayKey = DateTime(
-        leitura.dataHora.year,
-        leitura.dataHora.month,
-        leitura.dataHora.day,
-      );
-
-      if (grouped[dayKey] == null) {
-        grouped[dayKey] = [];
-      }
-
-      // Adiciona a leitura ao grupo daquele dia
-      grouped[dayKey]!.add(leitura);
-    }
-    return grouped;
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    _setDefaultDateFilter();
   }
 
-  // 3. Função para abrir o seletor de intervalo de datas (RF03.5)
+  void _loadData() {
+    _listaDeViveiros = HiveService.instance.getTodosTanques();
+  }
+
+  void _setDefaultDateFilter() {
+    final hoje = DateTime.now();
+    _startDate = hoje.subtract(const Duration(days: 6));
+    _endDate = DateTime(hoje.year, hoje.month, hoje.day, 23, 59, 59);
+  }
+
   Future<void> _selectDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
-      // Define as datas iniciais (se já houver filtro)
       initialDateRange: _startDate != null && _endDate != null
           ? DateTimeRange(start: _startDate!, end: _endDate!)
           : null,
-      firstDate: DateTime(2020), // Data mínima
-      lastDate: DateTime.now(), // Data máxima
-      locale: const Locale('pt', 'BR'), // Define o local para o picker
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      locale: const Locale('pt', 'BR'),
     );
 
     if (picked != null) {
       setState(() {
         _startDate = picked.start;
-        // Adiciona 23:59:59 ao endDate para incluir o dia inteiro
         _endDate = DateTime(
           picked.end.year,
           picked.end.month,
@@ -81,89 +80,99 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  // Função para limpar o filtro
-  void _clearFilter() {
+  void _clearDateFilter() {
     setState(() {
       _startDate = null;
       _endDate = null;
     });
   }
 
+  // 4. ATUALIZADO: Partilha por Turno (Req #3)
+  Future<void> _compartilharTurno(Turno turno) async {
+    setState(() {
+      _isSharingTurno = true;
+      _turnoBeingShared = turno;
+    });
+
+    try {
+      // Reutiliza a função principal do ShareService
+      await ShareService.instance.gerarECompartilharRelatorio(turno);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Erro: ${e.toString().replaceAll("Exception: ", "")}",
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSharingTurno = false;
+          _turnoBeingShared = null;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Histórico - ${widget.tanque.nome}")),
+      appBar: AppBar(title: const Text("Histórico Geral")),
       body: Column(
         children: [
-          // 4. Widget da Barra de Filtro
           _buildFilterBar(),
 
-          // 5. Lista de Leituras (agora expandida)
           Expanded(
+            // 5. ATUALIZADO: Ouve a caixa de Turnos (e Leituras)
             child: ValueListenableBuilder(
-              valueListenable: HiveService.instance.getLeiturasListenable(),
-              builder: (context, Box<Leitura> leiturasBox, _) {
-                // 1. Filtra as leituras APENAS para este viveiro
-                final tankReadings = leiturasBox.values
-                    .where(
-                      (leitura) =>
-                          leitura.idTanque ==
-                          widget.tanque.id, // Usa widget.tanque
-                    )
-                    .toList();
+              valueListenable: HiveService.instance.turnosBox.listenable(),
+              builder: (context, Box<Turno> turnosBox, _) {
+                // 6. FILTRA OS TURNOS pela data
+                List<Turno> filteredTurnos = turnosBox.values.toList();
 
-                // 2. APLICA O FILTRO DE DATA (RF03.5)
-                final List<Leitura> filteredReadings;
                 if (_startDate != null && _endDate != null) {
-                  filteredReadings = tankReadings.where((leitura) {
-                    final inicioDoDia = DateTime(
-                      _startDate!.year,
-                      _startDate!.month,
-                      _startDate!.day,
-                    );
-                    return (leitura.dataHora.isAfter(inicioDoDia) ||
-                            leitura.dataHora.isAtSameMomentAs(inicioDoDia)) &&
-                        (leitura.dataHora.isBefore(_endDate!) ||
-                            leitura.dataHora.isAtSameMomentAs(_endDate!));
+                  filteredTurnos = filteredTurnos.where((turno) {
+                    final data = turno.dataHoraInicio;
+                    return (data.isAfter(_startDate!) ||
+                            data.isAtSameMomentAs(_startDate!)) &&
+                        (data.isBefore(_endDate!) ||
+                            data.isAtSameMomentAs(_endDate!));
                   }).toList();
-                } else {
-                  // Se não houver filtro, mostra tudo
-                  filteredReadings = tankReadings;
                 }
 
-                // 3. Ordena pela data/hora (mais recente primeiro)
-                filteredReadings.sort(
-                  (a, b) => b.dataHora.compareTo(a.dataHora),
+                // Ordena (mais recente primeiro)
+                filteredTurnos.sort(
+                  (a, b) => b.dataHoraInicio.compareTo(a.dataHoraInicio),
                 );
 
-                // 4. Agrupa as leituras (já filtradas) por dia
-                final groupedReadings = _groupReadingsByDay(filteredReadings);
-                final days = groupedReadings.keys.toList();
+                final Map<String, String> nomesViveiros = {
+                  for (var v in _listaDeViveiros) v.id: v.nome,
+                };
 
-                // 5. Verifica se a lista FILTRADA está vazia
-                if (filteredReadings.isEmpty) {
-                  return Center(
+                if (filteredTurnos.isEmpty) {
+                  return const Center(
                     child: Text(
-                      _startDate == null
-                          ? "Nenhum registro encontrado para este viveiro."
-                          : "Nenhum registro encontrado neste período.",
-                      style: const TextStyle(color: Colors.grey, fontSize: 16),
+                      "Nenhum turno encontrado neste período.",
+                      style: TextStyle(color: Colors.grey, fontSize: 16),
                       textAlign: TextAlign.center,
                     ),
                   );
                 }
 
-                // 6. Constrói a lista de dias
+                // 7. CONSTRÓI A LISTA DE TURNOS
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),
-                  itemCount: days.length,
+                  itemCount: filteredTurnos.length,
                   separatorBuilder: (context, index) =>
                       const SizedBox(height: 20),
                   itemBuilder: (context, index) {
-                    final day = days[index];
-                    final readingsForDay = groupedReadings[day]!;
+                    final turno = filteredTurnos[index];
 
-                    return _buildDayGroup(context, day, readingsForDay);
+                    return _buildTurnoGroup(context, turno, nomesViveiros);
                   },
                 );
               },
@@ -175,104 +184,213 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildFilterBar() {
-    final bool isFilterActive = _startDate != null;
+    // ... (O código desta função permanece idêntico)
+    final bool isDateFilterActive = _startDate != null;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.all(12),
       color: Colors.grey[100],
-      child: Row(
+      child: Column(
         children: [
-          // Botão de Data (agora expandido)
-          Expanded(
-            // 3. Adicionado Expanded
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.calendar_month_rounded, size: 20),
-              label: Text(
-                isFilterActive
-                    ? "${_filterDateFormatter.format(_startDate!)} - ${_filterDateFormatter.format(_endDate!)}"
-                    : "Filtrar por Data",
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.calendar_month_rounded, size: 20),
+                  label: Text(
+                    isDateFilterActive
+                        ? "${_filterDateFormatter.format(_startDate!)} - ${_filterDateFormatter.format(_endDate!)}"
+                        : "Filtrar por Data",
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(
+                      context,
+                    ).primaryColor.withOpacity(0.9),
+                    foregroundColor: Colors.white,
+                    textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onPressed: _selectDateRange,
+                ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(
-                  context,
-                ).primaryColor.withOpacity(0.9),
-                foregroundColor: Colors.white,
-                textStyle: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              onPressed: _selectDateRange,
-            ),
-          ),
 
-          // Botão de Limpar (agora usa Visibility)
-          Visibility(
-            // 4. Substituído 'if' por 'Visibility'
-            visible: isFilterActive,
-            maintainSize: true, // <-- A CHAVE: Reserva o espaço
-            maintainAnimation: true,
-            maintainState: true,
-            child: IconButton(
-              // Usamos a cor vermelha do tema que definimos no main.dart
-              icon: Icon(
-                Icons.clear_rounded,
-                color: Theme.of(context).colorScheme.error,
+              Visibility(
+                visible: isDateFilterActive,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
+                  child: IconButton(
+                    icon: const Icon(Icons.cancel_rounded),
+                    color: Theme.of(context).colorScheme.error, // Vermelho
+                    tooltip: "Limpar filtro de data",
+                    onPressed: _clearDateFilter,
+                  ),
+                ),
               ),
-              tooltip: "Limpar filtro",
-              onPressed: _clearFilter,
-            ),
+            ],
           ),
+          const SizedBox(height: 10),
+          _buildViveiroFilterDropdown(),
         ],
       ),
     );
   }
 
-  // Widget para o grupo de um dia
-  Widget _buildDayGroup(
+  Widget _buildViveiroFilterDropdown() {
+    // ... (O código desta função permanece idêntico)
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<Tanque>(
+          value: _filtroViveiroSelecionado,
+          hint: const Text(
+            "Filtrar por Viveiro (Todos)",
+            style: TextStyle(color: Colors.black54),
+          ),
+          isExpanded: true,
+          icon: const Icon(Icons.arrow_drop_down),
+          items: [
+            const DropdownMenuItem<Tanque>(
+              value: null,
+              child: Text(
+                "Todos os Viveiros",
+                style: TextStyle(fontStyle: FontStyle.italic),
+              ),
+            ),
+            ..._listaDeViveiros.map((Tanque tanque) {
+              return DropdownMenuItem<Tanque>(
+                value: tanque,
+                child: Text(tanque.nome),
+              );
+            }).toList(),
+          ],
+          onChanged: (Tanque? newValue) {
+            setState(() {
+              _filtroViveiroSelecionado = newValue;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  // 8. REMOVIDO: _groupReadingsByDay
+
+  // 9. REFEITO: _buildDayGroup -> _buildTurnoGroup
+  Widget _buildTurnoGroup(
     BuildContext context,
-    DateTime day,
-    List<Leitura> readings,
+    Turno turno,
+    Map<String, String> nomesViveiros,
   ) {
+    // 10. Busca leituras E aplica o filtro de viveiro
+    List<Leitura> readingsForTurno = HiveService.instance.getLeiturasPorTurno(
+      turno,
+    );
+
+    if (_filtroViveiroSelecionado != null) {
+      readingsForTurno = readingsForTurno
+          .where((l) => l.idTanque == _filtroViveiroSelecionado!.id)
+          .toList();
+    }
+
+    // 11. Se o filtro de viveiro removeu todas as leituras, não mostra este turno
+    if (readingsForTurno.isEmpty) {
+      return const SizedBox.shrink(); // Não renderiza nada
+    }
+
+    final bool isThisTurnoLoading =
+        _isSharingTurno && _turnoBeingShared == turno;
+
+    // Cabeçalho do Turno
+    final String inicioFormatado = _turnoHeaderFormatter.format(
+      turno.dataHoraInicio,
+    );
+    final String fimFormatado = turno.dataHoraFim != null
+        ? _turnoHeaderFormatter.format(turno.dataHoraFim!)
+        : "Em Andamento";
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Cabeçalho do Dia (ex: "30 de outubro de 2025")
-        Text(
-          _dayFormatter.format(day),
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).primaryColor,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Título do Turno
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Turno", // Título Fixo
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+                Text(
+                  "$inicioFormatado - $fimFormatado", // Datas
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+
+            // Botão de Partilha do Turno
+            isThisTurnoLoading
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : IconButton(
+                    icon: Icon(
+                      Icons.share,
+                      color: Theme.of(context).primaryColor.withOpacity(0.8),
+                    ),
+                    tooltip: "Partilhar este turno",
+                    // 12. ATUALIZADO: Chama _compartilharTurno
+                    onPressed: _isSharingTurno
+                        ? null
+                        : () => _compartilharTurno(turno),
+                  ),
+          ],
         ),
         const SizedBox(height: 12),
-
-        // Lista de leituras daquele dia
         ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: readings.length,
+          itemCount: readingsForTurno.length,
           separatorBuilder: (context, index) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
-            final reading = readings[index];
-            return _buildHistoryCard(reading);
+            final reading = readingsForTurno[index];
+            return _buildHistoryCard(reading, nomesViveiros);
           },
         ),
       ],
     );
   }
 
-  // Widget para o Card de uma leitura individual
-  Widget _buildHistoryCard(Leitura reading) {
+  Widget _buildHistoryCard(Leitura reading, Map<String, String> nomesViveiros) {
+    // ... (O código desta função permanece idêntico)
+    final nomeViveiro =
+        nomesViveiros[reading.idTanque] ?? 'ID: ${reading.idTanque}';
+
     return Card(
-      elevation: 1, // Sutil
+      elevation: 1,
       child: ListTile(
-        // Hora da leitura
         leading: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.access_time_filled_rounded,
               size: 18,
-              color: Colors.grey,
+              color: Colors.grey[600],
             ),
             const SizedBox(height: 4),
             Text(
@@ -281,18 +399,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ],
         ),
-        // Dados de Oxigênio
+
         title: Text(
-          "O₂: ${reading.oxigenio.toStringAsFixed(1)} mg/L",
+          "O₂: ${reading.oxigenio.toStringAsFixed(1)} mg/L  |  Temp: ${reading.temperatura.toStringAsFixed(1)} °C",
           style: const TextStyle(
             fontWeight: FontWeight.w600,
             color: Colors.black87,
+            fontSize: 15,
           ),
         ),
-        // Dados de Temperatura
+
         subtitle: Text(
-          "Temp: ${reading.temperatura.toStringAsFixed(1)} °C",
-          style: const TextStyle(color: Colors.black54),
+          nomeViveiro,
+          style: TextStyle(
+            color: Theme.of(context).primaryColor,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
     );

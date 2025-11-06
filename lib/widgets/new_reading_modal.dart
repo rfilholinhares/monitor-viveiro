@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:monitor_viveiro/models/leitura_model.dart';
 import 'package:monitor_viveiro/models/tanque_model.dart';
@@ -6,37 +5,19 @@ import 'package:monitor_viveiro/services/hive_service.dart';
 import 'package:uuid/uuid.dart';
 
 class NewReadingModal extends StatefulWidget {
-  const NewReadingModal({super.key});
+  final Tanque viveiro;
+
+  const NewReadingModal({super.key, required this.viveiro});
 
   @override
   State<NewReadingModal> createState() => _NewReadingModalState();
 }
 
 class _NewReadingModalState extends State<NewReadingModal> {
-  // Lista de tanques virá do Hive
-  List<Tanque> _tanks = [];
-
-  // Agora selecionamos o objeto Tanque inteiro
-  Tanque? _selectedTank;
   final _oxygenController = TextEditingController();
   final _tempController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-
-  // Gerador de UUID
   final _uuid = const Uuid();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadTanks();
-  }
-
-  // Busca os tanques do HiveService
-  void _loadTanks() {
-    setState(() {
-      _tanks = HiveService.instance.getTodosTanques();
-    });
-  }
 
   @override
   void dispose() {
@@ -45,48 +26,49 @@ class _NewReadingModalState extends State<NewReadingModal> {
     super.dispose();
   }
 
-  // ATUALIZADO: Salva no HIVE
   Future<void> _submitForm() async {
-    // Valida o formulário
     if (_formKey.currentState!.validate()) {
-      if (_selectedTank == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Por favor, selecione um viveiro."),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
+      // ATUALIZADO: Usa a lógica de turno automático 12h-a-12h
+      final activeTurno = await HiveService.instance.getOrCreateTurnoAtual();
+
+      // (Lógica do Ajuste #3 - Máscara)
+      double? formatarValor(String rawValue) {
+        if (rawValue.isEmpty) return null;
+        final valorLimpo = rawValue.replaceAll(',', '.');
+        if (valorLimpo.contains('.')) {
+          return double.tryParse(valorLimpo);
+        }
+        final valorInt = double.tryParse(valorLimpo);
+        if (valorInt != null) {
+          return valorInt / 10.0;
+        }
+        return null;
       }
 
-      // Se tudo estiver OK, colete os dados (tratando vírgula e ponto)
-      final oxigenio = double.tryParse(
-        _oxygenController.text.replaceAll(',', '.'),
-      );
-      final temperatura = double.tryParse(
-        _tempController.text.replaceAll(',', '.'),
-      );
+      final oxigenio = formatarValor(_oxygenController.text);
+      final temperatura = formatarValor(_tempController.text);
 
       if (oxigenio == null || temperatura == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Valores de leitura inválidos."),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Valores de leitura inválidos."),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
         return;
       }
 
-      // 1. Criar o objeto Leitura
       final novaLeitura = Leitura(
-        id: _uuid.v4(), // Gera um ID único
-        idTanque: _selectedTank!.id,
+        id: _uuid.v4(),
+        idTanque: widget.viveiro.id,
         dataHora: DateTime.now(),
         oxigenio: oxigenio,
         temperatura: temperatura,
+        idTurno: activeTurno.id,
       );
 
-      // 2. Salvar no Hive
       try {
         await HiveService.instance.addLeitura(novaLeitura);
 
@@ -97,13 +79,9 @@ class _NewReadingModalState extends State<NewReadingModal> {
               backgroundColor: Colors.green,
             ),
           );
-          // Fecha o modal
           Navigator.of(context).pop();
         }
       } catch (e) {
-        if (kDebugMode) {
-          print("Erro ao salvar no Hive: $e");
-        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -132,7 +110,7 @@ class _NewReadingModalState extends State<NewReadingModal> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildDropdown(),
+              _buildViveiroInfo(),
               const SizedBox(height: 20),
               _buildOxygenInput(),
               const SizedBox(height: 20),
@@ -148,52 +126,39 @@ class _NewReadingModalState extends State<NewReadingModal> {
     );
   }
 
-  // ATUALIZADO: Dropdown agora usa List<Tanque>
-  Widget _buildDropdown() {
+  Widget _buildViveiroInfo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Selecione o Viveiro",
+          "Viveiro Selecionado",
           style: TextStyle(
             color: Colors.grey.shade800,
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<Tanque>(
-          // Usa o tipo Tanque
-          value: _selectedTank,
-          hint: Text(
-            "Escolha um viveiro",
-            style: TextStyle(color: Colors.grey.shade500),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade300),
           ),
-          // Itens baseados na lista do Hive
-          items: _tanks.map((Tanque tanque) {
-            return DropdownMenuItem<Tanque>(
-              value: tanque,
-              child: Text(tanque.nome),
-            );
-          }).toList(),
-          onChanged: (newValue) {
-            setState(() {
-              _selectedTank = newValue;
-            });
-          },
-          decoration: InputDecoration(
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
+          child: Text(
+            widget.viveiro.nome,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
             ),
           ),
-          validator: (value) => value == null ? 'Campo obrigatório' : null,
         ),
       ],
     );
   }
 
-  // Bloco 2: Oxigênio (Validação melhorada)
   Widget _buildOxygenInput() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,9 +173,9 @@ class _NewReadingModalState extends State<NewReadingModal> {
         const SizedBox(height: 8),
         TextFormField(
           controller: _oxygenController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: TextInputType.number,
           decoration: InputDecoration(
-            hintText: "Exc: 6.5",
+            hintText: "Ex: 65 (para 6.5) ou 285 (para 28.5)",
             prefixIcon: Icon(Icons.air_rounded, color: Colors.grey.shade600),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -219,7 +184,7 @@ class _NewReadingModalState extends State<NewReadingModal> {
               return 'Campo obrigatório';
             }
             if (double.tryParse(value.replaceAll(',', '.')) == null) {
-              return 'Valor inválido. Use ponto (ex: 6.5)';
+              return 'Valor inválido';
             }
             return null;
           },
@@ -228,7 +193,6 @@ class _NewReadingModalState extends State<NewReadingModal> {
     );
   }
 
-  // Bloco 3: Temperatura (Validação melhorada)
   Widget _buildTemperatureInput() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,9 +207,9 @@ class _NewReadingModalState extends State<NewReadingModal> {
         const SizedBox(height: 8),
         TextFormField(
           controller: _tempController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: TextInputType.number,
           decoration: InputDecoration(
-            hintText: "Exc: 28.5",
+            hintText: "Ex: 285 (para 28.5)",
             prefixIcon: Icon(
               Icons.thermostat_rounded,
               color: Colors.grey.shade600,
@@ -257,7 +221,7 @@ class _NewReadingModalState extends State<NewReadingModal> {
               return 'Campo obrigatório';
             }
             if (double.tryParse(value.replaceAll(',', '.')) == null) {
-              return 'Valor inválido. Use ponto (ex: 28.5)';
+              return 'Valor inválido';
             }
             return null;
           },
@@ -266,7 +230,6 @@ class _NewReadingModalState extends State<NewReadingModal> {
     );
   }
 
-  // Bloco 4: Botão de Registrar
   Widget _buildSubmitButton() {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(

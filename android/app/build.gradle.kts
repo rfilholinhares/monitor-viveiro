@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // O Flutter Gradle Plugin deve ser aplicado depois dos plugins do Android e Kotlin.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -20,25 +20,35 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.monitor_viveiro"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // *** A CORREÇÃO IMPORTANTE (Multidex) ***
+        // Habilita o suporte para Multidex (Sintaxe KTS correta)
+        multiDexEnabled = true
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            
+            // *** REMOVIDO ***
+            // As linhas 'isMinifyEnabled' e 'isShrinkResources' foram removidas.
+            // O Flutter gere isto automaticamente ao correr 'flutter build apk --release'.
+            // Adicioná-las aqui estava a causar o erro de build.
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+// *** A CORREÇÃO IMPORTANTE (Multidex) ***
+// Adiciona a dependência do Multidex (Sintaxe KTS correta)
+dependencies {
+    implementation("androidx.multidex:multidex:2.0.1")
 }

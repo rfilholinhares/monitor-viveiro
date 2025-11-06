@@ -1,47 +1,38 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'leitura_model.dart';
+part of 'turno_model.dart';
 
 // **************************************************************************
 // TypeAdapterGenerator
 // **************************************************************************
 
-class LeituraAdapter extends TypeAdapter<Leitura> {
+class TurnoAdapter extends TypeAdapter<Turno> {
   @override
-  final int typeId = 1;
+  final int typeId = 2;
 
   @override
-  Leitura read(BinaryReader reader) {
+  Turno read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return Leitura(
+    return Turno(
       id: fields[0] as String,
-      idTanque: fields[1] as String,
-      dataHora: fields[2] as DateTime,
-      oxigenio: fields[3] as double,
-      temperatura: fields[4] as double,
-      idTurno: fields[5] as String,
+      dataHoraInicio: fields[1] as DateTime,
+      dataHoraFim: fields[2] as DateTime?,
     );
   }
 
   @override
-  void write(BinaryWriter writer, Leitura obj) {
+  void write(BinaryWriter writer, Turno obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(3)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.idTanque)
+      ..write(obj.dataHoraInicio)
       ..writeByte(2)
-      ..write(obj.dataHora)
-      ..writeByte(3)
-      ..write(obj.oxigenio)
-      ..writeByte(4)
-      ..write(obj.temperatura)
-      ..writeByte(5)
-      ..write(obj.idTurno);
+      ..write(obj.dataHoraFim);
   }
 
   @override
@@ -50,7 +41,7 @@ class LeituraAdapter extends TypeAdapter<Leitura> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is LeituraAdapter &&
+      other is TurnoAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
